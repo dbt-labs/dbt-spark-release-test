@@ -1,12 +1,14 @@
 # **what?**
 # Take the given commit, run unit tests specifically on that sha, build and
 # package it, and then release to GitHub and PyPi with that specific build
-
+#
 # **why?**
 # Ensure an automated and tested release process
-
+#
 # **when?**
+# Run this workflow only after the version bump workflow is completed and related changes are reviewed and merged.
 # This will only run manually with a given sha, version, and changelog_path
+#
 
 name: Release to GitHub and PyPi
 
@@ -30,11 +32,6 @@ on:
         type: string
         default: "scripts/build-dist.sh"
         required: true
-      env_setup_script_path:
-        description: "Environment setup script path"
-        type: string
-        default: ""
-        required: true
       s3_bucket_name:
         description: "AWS S3 bucket name"
         type: string
@@ -45,6 +42,11 @@ on:
         type: string
         default: "dbt --version"
         required: true
+      env_setup_script_path:
+        description: "Environment setup script path"
+        type: string
+        default: ""
+        required: false
       test_run:
         description: "Test run (Publish release as draft)"
         type: boolean
@@ -74,10 +76,16 @@ jobs:
           echo Package test command:               ${{ inputs.package_test_command }}
           echo Test run:                           ${{ inputs.test_run }}
 
-  bump-version-generate-changelog:
+  # The Spark repository uses CircleCi to run integration tests.
+  # Because of this, the process of version bumps will be manual
+  # which means that this stage will be used to audit the version
+  # and changelog in sources.
+  # We are passing `env_setup_script_path` as an empty string
+  # so that the integration tests stage will be skipped.
+  audit-version-and-changelog:
     name: Bump package version, Generate changelog
 
-    uses: dbt-labs/dbt-release/.github/workflows/release-prep.yml@dev
+    uses: dbt-labs/dbt-release/.github/workflows/release-prep.yml@main
 
     with:
       sha: ${{ inputs.sha }}
@@ -89,31 +97,31 @@ jobs:
     secrets:
       FISHTOWN_BOT_PAT: ${{ secrets.FISHTOWN_BOT_PAT }}
 
-  log-outputs-bump-version-generate-changelog:
+  log-outputs-audit-version-and-changelog:
     name: "[Log output] Bump package version, Generate changelog"
     if: ${{ !failure() && !cancelled() }}
 
-    needs: [bump-version-generate-changelog]
+    needs: [audit-version-and-changelog]
 
     runs-on: ubuntu-latest
 
     steps:
       - name: Print variables
         run: |
-          echo Final SHA     : ${{ needs.bump-version-generate-changelog.outputs.final_sha }}
-          echo Changelog path: ${{ needs.bump-version-generate-changelog.outputs.changelog_path }}
+          echo Final SHA     : ${{ needs.audit-version-and-changelog.outputs.final_sha }}
+          echo Changelog path: ${{ needs.audit-version-and-changelog.outputs.changelog_path }}
 
   build-test-package:
     name: Build, Test, Package
     if: ${{ !failure() && !cancelled() }}
-    needs: [bump-version-generate-changelog]
+    needs: [audit-version-and-changelog]
 
-    uses: dbt-labs/dbt-release/.github/workflows/build.yml@dev
+    uses: dbt-labs/dbt-release/.github/workflows/build.yml@main
 
     with:
-      sha: ${{ needs.bump-version-generate-changelog.outputs.final_sha }}
+      sha: ${{ needs.audit-version-and-changelog.outputs.final_sha }}
       version_number: ${{ inputs.version_number }}
-      changelog_path: ${{ needs.bump-version-generate-changelog.outputs.changelog_path }}
+      changelog_path: ${{ needs.audit-version-and-changelog.outputs.changelog_path }}
       build_script_path: ${{ inputs.build_script_path }}
       s3_bucket_name: ${{ inputs.s3_bucket_name }}
       package_test_command: ${{ inputs.package_test_command }}
@@ -127,14 +135,14 @@ jobs:
     name: GitHub Release
     if: ${{ !failure() && !cancelled() }}
 
-    needs: [bump-version-generate-changelog, build-test-package]
+    needs: [audit-version-and-changelog, build-test-package]
 
-    uses: dbt-labs/dbt-release/.github/workflows/github-release.yml@dev
+    uses: dbt-labs/dbt-release/.github/workflows/github-release.yml@main
 
     with:
-      sha: ${{ needs.bump-version-generate-changelog.outputs.final_sha }}
+      sha: ${{ needs.audit-version-and-changelog.outputs.final_sha }}
       version_number: ${{ inputs.version_number }}
-      changelog_path: ${{ needs.bump-version-generate-changelog.outputs.changelog_path }}
+      changelog_path: ${{ needs.audit-version-and-changelog.outputs.changelog_path }}
       test_run: ${{ inputs.test_run }}
 
   pypi-release:
@@ -142,7 +150,7 @@ jobs:
 
     needs: [github-release]
 
-    uses: dbt-labs/dbt-release/.github/workflows/pypi-release.yml@dev
+    uses: dbt-labs/dbt-release/.github/workflows/pypi-release.yml@main
 
     with:
       version_number: ${{ inputs.version_number }}
@@ -158,13 +166,13 @@ jobs:
 
     needs:
       [
-        bump-version-generate-changelog,
+        audit-version-and-changelog,
         build-test-package,
         github-release,
         pypi-release,
       ]
 
-    uses: dbt-labs/dbt-release/.github/workflows/slack-post-notification.yml@dev
+    uses: dbt-labs/dbt-release/.github/workflows/slack-post-notification.yml@main
     with:
       status: "failure"
 
