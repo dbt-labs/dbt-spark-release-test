@@ -89,7 +89,7 @@ jobs:
   audit-version-and-changelog:
     name: Bump package version, Generate changelog
 
-    uses: dbt-labs/dbt-release/.github/workflows/release-prep.yml@users/alexander-smolyakov/issue#54-release-prep-reorg-version-bump-steps
+    uses: dbt-labs/dbt-release/.github/workflows/release-prep.yml@users/alexander-smolyakov/issue53-rework-repo-checks
 
     with:
       sha: ${{ inputs.sha }}
@@ -120,7 +120,7 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     needs: [audit-version-and-changelog]
 
-    uses: dbt-labs/dbt-release/.github/workflows/build.yml@users/alexander-smolyakov/issue#54-release-prep-reorg-version-bump-steps
+    uses: dbt-labs/dbt-release/.github/workflows/build.yml@users/alexander-smolyakov/issue53-rework-repo-checks
 
     with:
       sha: ${{ needs.audit-version-and-changelog.outputs.final_sha }}
@@ -141,7 +141,7 @@ jobs:
 
     needs: [audit-version-and-changelog, build-test-package]
 
-    uses: dbt-labs/dbt-release/.github/workflows/github-release.yml@users/alexander-smolyakov/issue#54-release-prep-reorg-version-bump-steps
+    uses: dbt-labs/dbt-release/.github/workflows/github-release.yml@users/alexander-smolyakov/issue53-rework-repo-checks
 
     with:
       sha: ${{ needs.audit-version-and-changelog.outputs.final_sha }}
@@ -154,7 +154,7 @@ jobs:
 
     needs: [github-release]
 
-    uses: dbt-labs/dbt-release/.github/workflows/pypi-release.yml@users/alexander-smolyakov/issue#54-release-prep-reorg-version-bump-steps
+    uses: dbt-labs/dbt-release/.github/workflows/pypi-release.yml@users/alexander-smolyakov/issue53-rework-repo-checks
 
     with:
       version_number: ${{ inputs.version_number }}
@@ -176,7 +176,7 @@ jobs:
         pypi-release,
       ]
 
-    uses: dbt-labs/dbt-release/.github/workflows/slack-post-notification.yml@users/alexander-smolyakov/issue#54-release-prep-reorg-version-bump-steps
+    uses: dbt-labs/dbt-release/.github/workflows/slack-post-notification.yml@users/alexander-smolyakov/issue53-rework-repo-checks
     with:
       status: "failure"
 
