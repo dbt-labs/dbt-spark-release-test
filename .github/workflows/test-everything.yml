@@ -1,0 +1,130 @@
+name: dbt-labs/dbt-spark/test-everything
+on:
+  push:
+    branches:
+    - main
+env:
+  DBT_DATABRICKS_CLUSTER_NAME: xxxxjdtx
+  DBT_DATABRICKS_ENDPOINT: xxxxb9ea
+  DBT_DATABRICKS_HOST_NAME: xxxx.com
+  DBT_DATABRICKS_TOKEN: xxxx447d
+  DBT_DATABRICKS_USER: xxxx.com
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    container:
+      image: fishtownanalytics/test-container:10
+    env:
+      DBT_INVOCATION_ENV: circle
+    steps:
+    - uses: actions/checkout@v3.5.0
+    - run: tox -e flake8,unit
+  integration-spark-session:
+    runs-on: ubuntu-latest
+    container:
+      image: godatadriven/pyspark:3.1
+    needs:
+    - unit
+    env:
+      DBT_INVOCATION_ENV: circle
+    steps:
+    - uses: actions/checkout@v3.5.0
+    - run: apt-get update
+    - run: python3 -m pip install --upgrade pip
+    - run: apt-get install -y git gcc g++ unixodbc-dev libsasl2-dev
+    - run: python3 -m pip install tox
+    - name: Run integration tests
+      run: tox -e integration-spark-session
+    - uses: actions/upload-artifact@v3.1.1
+      with:
+        path: "./logs"
+  integration-spark-thrift:
+    runs-on: ubuntu-latest
+    container:
+      image: fishtownanalytics/test-container:10
+    services:
+      spark:
+        image: godatadriven/spark:3.1.1
+        env:
+          WAIT_FOR: localhost:5432
+        options: "   --class org.apache.spark.sql.hive.thriftserver.HiveThriftServer2 --name Thrift JDBC/ODBC Server\n"
+      postgres:
+        image: postgres:9.6.17-alpine
+        env:
+          POSTGRES_USER: dbt
+          POSTGRES_PASSWORD: dbt
+          POSTGRES_DB: metastore
+    needs:
+    - unit
+    env:
+      DBT_INVOCATION_ENV: circle
+    steps:
+    - uses: actions/checkout@v3.5.0
+    - name: Wait for Spark-Thrift
+      run: dockerize -wait tcp://localhost:10000 -timeout 15m -wait-retry-interval 5s
+    - name: Run integration tests
+      run: tox -e integration-spark-thrift
+    - uses: actions/upload-artifact@v3.1.1
+      with:
+        path: "./logs"
+  integration-spark-databricks-http:
+    runs-on: ubuntu-latest
+    container:
+      image: fishtownanalytics/test-container:10
+    needs:
+    - integration-spark-thrift
+    env:
+      DBT_INVOCATION_ENV: circle
+      DBT_DATABRICKS_RETRY_ALL: true
+      DBT_TEST_USER_1: buildbot+dbt_test_user_1@dbtlabs.com
+      DBT_TEST_USER_2: buildbot+dbt_test_user_2@dbtlabs.com
+      DBT_TEST_USER_3: buildbot+dbt_test_user_3@dbtlabs.com
+    steps:
+    - uses: actions/checkout@v3.5.0
+    - name: Run integration tests
+      run: tox -e integration-spark-databricks-http
+    - uses: actions/upload-artifact@v3.1.1
+      with:
+        path: "./logs"
+  integration-spark-databricks-odbc-cluster:
+    runs-on: ubuntu-latest
+    container:
+      image: 828731156495.dkr.ecr.us-east-1.amazonaws.com/dbt-spark-odbc-test-container:latest
+    needs:
+    - integration-spark-thrift
+    env:
+      DBT_INVOCATION_ENV: circle
+      ODBC_DRIVER: Simba
+      DBT_TEST_USER_1: buildbot+dbt_test_user_1@dbtlabs.com
+      DBT_TEST_USER_2: buildbot+dbt_test_user_2@dbtlabs.com
+      DBT_TEST_USER_3: buildbot+dbt_test_user_3@dbtlabs.com
+      AWS_ACCESS_KEY_ID_STAGING:
+      AWS_SECRET_ACCESS_KEY_STAGING:
+    steps:
+    - uses: actions/checkout@v3.5.0
+    - name: Run integration tests
+      run: tox -e integration-spark-databricks-odbc-cluster
+    - uses: actions/upload-artifact@v3.1.1
+      with:
+        path: "./logs"
+  integration-spark-databricks-odbc-endpoint:
+    runs-on: ubuntu-latest
+    container:
+      image: 828731156495.dkr.ecr.us-east-1.amazonaws.com/dbt-spark-odbc-test-container:latest
+    needs:
+    - integration-spark-thrift
+    env:
+      DBT_INVOCATION_ENV: circle
+      ODBC_DRIVER: Simba
+      DBT_TEST_USER_1: buildbot+dbt_test_user_1@dbtlabs.com
+      DBT_TEST_USER_2: buildbot+dbt_test_user_2@dbtlabs.com
+      DBT_TEST_USER_3: buildbot+dbt_test_user_3@dbtlabs.com
+      AWS_ACCESS_KEY_ID_STAGING:
+      AWS_SECRET_ACCESS_KEY_STAGING:
+    steps:
+    - uses: actions/checkout@v3.5.0
+    - name: Run integration tests
+      run: tox -e integration-spark-databricks-odbc-sql-endpoint
+    - uses: actions/upload-artifact@v3.1.1
+      with:
+        path: "./logs"
